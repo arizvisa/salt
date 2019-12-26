@@ -196,3 +196,44 @@ class RootsTest(TestCase, AdaptedConfigurationTestCaseMixin, LoaderModuleMockMix
         self.assertEqual('dynamo.sls', ret1['rel'])
         self.assertIn('top.sls', ret2)
         self.assertIn('dynamo.sls', ret2)
+
+    def test_consolidated_file_roots(self):
+        dyn_root_dir1 = tempfile.mkdtemp(dir=TMP)
+        top_sls1 = os.path.join(dyn_root_dir1, 'top.sls')
+        with salt.utils.files.fopen(top_sls1, 'w') as fp_:
+            fp_.write("""
+            master:
+                '*':
+                    - dynamo1
+            base:
+                '*':
+                    - fake
+            """)
+        dynamo_sls1 = os.path.join(dyn_root_dir1, 'dynamo1.sls')
+        with salt.utils.files.fopen(dynamo_sls1, 'w') as fp_:
+            fp_.write("foo:\n  test.nop\n")
+
+        dyn_root_dir2 = tempfile.mkdtemp(dir=TMP)
+        top_sls2 = os.path.join(dyn_root_dir2, 'top.sls')
+        with salt.utils.files.fopen(top_sls2, 'w') as fp_:
+            fp_.write("""
+            master:
+                '*':
+                    - dynamo2
+            base:
+                '*':
+                    - fake
+            """)
+        dynamo_sls2 = os.path.join(dyn_root_dir2, 'dynamo2.sls')
+        with salt.utils.files.fopen(dynamo_sls2, 'w') as fp_:
+            fp_.write("foo:\n  test.nop\n")
+
+        opts = {'file_roots': {}}
+        opts['file_roots']['master'] = [dyn_root_dir1, dyn_root_dir2]
+
+        with patch.dict(roots.__opts__, opts):
+            ret = roots.file_list({'saltenv': 'master'})
+
+        self.assertIn('top.sls', ret)
+        self.assertIn('dynamo1.sls', ret)
+        self.assertIn('dynamo2.sls', ret)
