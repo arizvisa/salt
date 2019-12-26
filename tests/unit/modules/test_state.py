@@ -1615,3 +1615,45 @@ class TopFileMergingCase(TestCase, LoaderModuleMockMixin):
             top_file_merging_strategy='same',
             state_top_saltenv='baz')
         assert ret == {}, ret
+
+    def test_merge_multiple_topfiles(self):
+        dyn_root_dir1 = tempfile.mkdtemp(dir=TMP)
+        top_sls1 = os.path.join(dyn_root_dir1, 'top.sls')
+        with salt.utils.files.fopen(top_sls1, 'w') as fp_:
+            fp_.write("""
+            master:
+                '*':
+                    - dynamo1
+            base:
+                '*':
+                    - fake
+            """)
+        dynamo_sls1 = os.path.join(dyn_root_dir1, 'dynamo1.sls')
+        with salt.utils.files.fopen(dynamo_sls1, 'w') as fp_:
+            fp_.write("foo:\n  test.nop\n")
+
+        dyn_root_dir2 = tempfile.mkdtemp(dir=TMP)
+        top_sls2 = os.path.join(dyn_root_dir2, 'top.sls')
+        with salt.utils.files.fopen(top_sls2, 'w') as fp_:
+            fp_.write("""
+            master:
+                '*':
+                    - dynamo2
+            base:
+                '*':
+                    - fake
+            """)
+        dynamo_sls2 = os.path.join(dyn_root_dir2, 'dynamo2.sls')
+        with salt.utils.files.fopen(dynamo_sls2, 'w') as fp_:
+            fp_.write("foo:\n  test.nop\n")
+
+        opts = {'file_roots': {}}
+        opts['file_roots']['master'] = [dyn_root_dir1, dyn_root_dir2]
+
+        local_opts = copy.deepcopy(self.dunder_opts)
+        local_opts.update(opts)
+        with patch.dict(state.__opts__, local_opts), \
+            patch.object(salt.state.State, '_gather_pillar', MagicMock(return_value={})):
+            ret = state.show_top(saltenv='master')
+        data = salt.utils.json.loads(salt.utils.json.dumps(ret))
+        assert data == {'master': ['dynamo1', 'dynamo2']}, data
